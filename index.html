@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard BI</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={darkMode:'class'}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style type="text/tailwindcss">
+@layer components{
+.card{@apply bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-4}
+.inp{@apply rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-sm w-full outline-none focus:ring-2 focus:ring-indigo-500}
+.btn{@apply px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition}
+.btn-p{@apply px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-500 cursor-pointer transition}
+.lb{@apply block text-xs text-slate-500 dark:text-slate-400 mb-1}
+}
+</style>
+<style>@media print{.noprint{display:none!important}body{background:#fff!important}}</style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen">
+<header class="noprint sticky top-0 z-20 backdrop-blur bg-white/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-2">
+    <div class="flex items-center gap-2 mr-auto"><div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500"></div><h1 class="font-bold">Dashboard BI <span id="fn" class="text-xs font-normal text-slate-500"></span></h1></div>
+    <select id="sheet" class="inp !w-auto hidden"></select>
+    <label class="btn-p">⬆ Carregar arquivo<input id="file" type="file" accept=".xlsx,.xls,.csv" class="hidden"></label>
+    <button id="bx" class="btn">⬇ Excel</button><button id="bp" class="btn">⬇ PDF</button><button id="dk" class="btn" title="Modo escuro">🌙</button>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto p-4 space-y-4">
+  <section id="drop" class="card text-center py-20 border-2 border-dashed">
+    <div class="text-5xl mb-3">📊</div>
+    <h2 class="text-xl font-semibold">Arraste um arquivo Excel ou CSV aqui</h2>
+    <p class="text-slate-500 text-sm mt-1">Os dados são processados localmente no navegador. Formatos: .xlsx, .xls, .csv</p>
+  </section>
+
+  <div id="app" class="hidden space-y-4">
+    <div class="card noprint grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div><label class="lb">Métrica</label><select id="m" class="inp"></select></div>
+      <div><label class="lb">Data</label><select id="d" class="inp"></select></div>
+      <div><label class="lb">Categoria principal</label><select id="c1" class="inp"></select></div>
+      <div><label class="lb">Categoria secundária</label><select id="c2" class="inp"></select></div>
+      <div><label class="lb">Período</label><select id="g" class="inp"><option value="m">Mensal</option><option value="q">Trimestral</option></select></div>
+    </div>
+
+    <div class="card noprint space-y-3">
+      <div class="flex flex-wrap gap-2 items-end">
+        <div class="grow min-w-[200px]"><label class="lb">Busca rápida</label><input id="q" class="inp" placeholder="Pesquisar em todas as colunas…"></div>
+        <div><label class="lb">Data de</label><input id="df" type="date" class="inp"></div>
+        <div><label class="lb">Data até</label><input id="dt" type="date" class="inp"></div>
+        <div><label class="lb">Métrica mín.</label><input id="mn" type="number" class="inp w-28"></div>
+        <button id="clr" class="btn">Limpar filtros</button>
+      </div>
+      <div id="fcat" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2"></div>
+    </div>
+
+    <div id="kpis" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3"></div>
+
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="card lg:col-span-2"><h3 class="font-semibold mb-2" id="t_tr">Tendência</h3><div class="relative h-64"><canvas id="c_tr"></canvas></div></div>
+      <div class="card"><h3 class="font-semibold mb-2" id="t_do">Distribuição</h3><div class="relative h-64"><canvas id="c_do"></canvas></div></div>
+    </div>
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="card"><h3 class="font-semibold mb-2" id="t_bar">Top categorias</h3><div class="relative h-72"><canvas id="c_bar"></canvas></div></div>
+      <div class="card"><h3 class="font-semibold mb-2" id="t_st">Composição por período</h3><div class="relative h-72"><canvas id="c_st"></canvas></div></div>
+    </div>
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="card"><h3 class="font-semibold mb-2">Comparativo entre os dois últimos períodos</h3><div id="dl" class="grid grid-cols-2 gap-3"></div></div>
+      <div class="card"><div class="flex items-center justify-between mb-2 gap-2"><h3 class="font-semibold">Ranking</h3><select id="rk" class="inp !w-auto noprint"></select></div><div id="rank" class="space-y-2"></div></div>
+    </div>
+
+    <div class="card">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3"><h3 class="font-semibold">Tabela de dados</h3>
+        <div class="noprint flex items-center gap-2 text-sm">Linhas <select id="ps" class="inp !w-auto"><option>10</option><option selected>15</option><option>25</option><option>50</option></select></div></div>
+      <div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+        <table class="w-full text-sm"><thead id="th" class="bg-slate-100 dark:bg-slate-800 text-left"></thead><tbody id="tb"></tbody></table>
+      </div>
+      <div id="pg" class="noprint flex items-center justify-between gap-2 mt-3 text-sm"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $=s=>document.querySelector(s), P=['#6366f1','#ec4899','#10b981','#f59e0b','#06b6d4','#ef4444','#8b5cf6','#84cc16','#f97316','#14b8a6'];
+const S={wb:null,rows:[],cols:[],f:[],m:null,d:null,c1:null,c2:null,g:'m',filters:{},q:'',from:'',to:'',min:'',sort:{k:null,d:1},page:1,ps:15,charts:{}};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=n=>n==null||isNaN(n)?'–':Number(n).toLocaleString('pt-BR',{maximumFractionDigits:1});
+const fd=d=>d?d.toLocaleDateString('pt-BR'):'';
+const cell=v=>v instanceof Date?fd(v):typeof v==='number'?fmt(v):(v??'');
+function pd(v){if(v instanceof Date)return isNaN(v)?null:v;if(typeof v==='string'){const m=v.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);if(m){let y=+m[3];if(y<100)y+=2000;const d=new Date(y,m[2]-1,+m[1]);return isNaN(d)?null:d}}return null}
+function pn(v){if(typeof v==='number')return isFinite(v)?v:null;if(typeof v==='string'){const t=v.trim().replace(',','.');if(t!==''&&!isNaN(t))return +t}return null}
+const opts=(a,sel,empty)=>(empty?`<option value="">${empty}</option>`:'')+a.map(x=>`<option value="${esc(x)}" ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
+
+/* ---------- Leitura ---------- */
+function readFile(f){
+  if(!f)return; const fr=new FileReader(), csv=/\.csv$/i.test(f.name);
+  fr.onload=e=>{try{S.wb=XLSX.read(e.target.result,{type:csv?'string':'array',cellDates:true});
+    $('#fn').textContent='· '+f.name; const sh=$('#sheet'); sh.innerHTML=opts(S.wb.SheetNames); sh.classList.toggle('hidden',S.wb.SheetNames.length<2);
+    loadSheet(S.wb.SheetNames[0]);}catch(err){alert('Erro ao ler o arquivo: '+err.message)}};
+  csv?fr.readAsText(f):fr.readAsArrayBuffer(f);
+}
+function loadSheet(name){
+  const a=XLSX.utils.sheet_to_json(S.wb.Sheets[name],{header:1,raw:true,defval:null});
+  const cnt=a.slice(0,10).map(r=>r.filter(v=>typeof v==='string'&&v.trim()).length), mx=Math.max(0,...cnt), h=Math.max(0,cnt.findIndex(c=>c>=mx*.7));
+  const seen={}, hdr=(a[h]||[]).map((v,i)=>{let k=(v==null||v==='')?'Coluna '+(i+1):String(v).trim();if(seen[k]){seen[k]++;k+=' ('+seen[k]+')'}else seen[k]=1;return k});
+  S.rows=a.slice(h+1).filter(r=>r.some(v=>v!=null&&v!=='')).map(r=>{const o={};hdr.forEach((k,i)=>o[k]=r[i]===''?null:(r[i]??null));return o});
+  if(!S.rows.length){alert('Nenhum dado encontrado nesta aba.');return}
+  S.cols=hdr.map(k=>{const v=S.rows.map(r=>r[k]).filter(x=>x!=null), n=v.length||1, u=new Set(v.map(String)).size;
+    const nd=v.filter(x=>pd(x)).length, nn=v.filter(x=>pn(x)!==null).length;
+    let t='text'; if(nd/n>.6)t='date'; else if(nn/n>.6)t='num'; else if(u<=30||u/n<.3)t='cat'; return {k,t,n:v.length}}).filter(c=>c.n>0);
+  S.cols.forEach(c=>{if(c.t==='date')S.rows.forEach(r=>r[c.k]=pd(r[c.k]));if(c.t==='num')S.rows.forEach(r=>r[c.k]=pn(r[c.k]))});
+  const pick=(t,rx,ex=[])=>{const a=S.cols.filter(c=>c.t===t&&!ex.includes(c.k));return (a.find(c=>rx.test(c.k))||a[0]||{}).k||null};
+  S.m=pick('num',/hora|esfor|total|valor|qtde|receita|custo/i); S.d=pick('date',/in[ií]cio|data|dta/i);
+  S.c1=pick('cat',/squad|categoria|tema|fase|sistema/i); S.c2=pick('cat',/status/i,[S.c1]);
+  S.filters={};S.q=S.from=S.to=S.min='';S.sort={k:null,d:1};S.page=1;
+  ['q','df','dt','mn'].forEach(i=>$('#'+i).value='');
+  const of=t=>S.cols.filter(c=>c.t===t).map(c=>c.k), cats=S.cols.filter(c=>c.t==='cat').map(c=>c.k);
+  $('#m').innerHTML=opts(of('num'),S.m,'Contagem de registros'); $('#d').innerHTML=opts(of('date'),S.d,'(sem data)');
+  $('#c1').innerHTML=opts(cats,S.c1,'(nenhuma)'); $('#c2').innerHTML=opts(cats,S.c2,'(nenhuma)');
+  $('#rk').innerHTML=opts(cats,S.c1);
+  $('#fcat').innerHTML=cats.slice(0,12).map(k=>`<div><label class="lb">${esc(k)}</label><select class="inp fc" data-k="${esc(k)}">${opts([...new Set(S.rows.map(r=>r[k]).filter(x=>x!=null).map(String))].sort(),'','Todos')}</select></div>`).join('');
+  $('#drop').classList.add('hidden'); $('#app').classList.remove('hidden'); apply();
+}
+
+/* ---------- Filtros ---------- */
+function apply(){
+  const q=S.q.toLowerCase(), f=S.from&&new Date(S.from+'T00:00'), t=S.to&&new Date(S.to+'T23:59');
+  S.f=S.rows.filter(r=>{
+    for(const k in S.filters)if(S.filters[k]&&String(r[k])!==S.filters[k])return false;
+    if(S.d&&(f||t)){const d=r[S.d];if(!d||(f&&d<f)||(t&&d>t))return false}
+    if(S.m&&S.min!==''){const v=r[S.m];if(v==null||v<+S.min)return false}
+    if(q&&!S.cols.some(c=>String(cell(r[c.k])).toLowerCase().includes(q)))return false;
+    return true});
+  S.page=1; render();
+}
+const render=()=>{kpis();charts();delta();rank();tbl()};
+
+/* ---------- Agrupamentos ---------- */
+const pk=d=>S.g==='q'?`${d.getFullYear()}-T${Math.floor(d.getMonth()/3)+1}`:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const pl=k=>S.g==='q'?k.split('-').reverse().join('/'):k.split('-').reverse().join('/');
+function grp(keyf){const m=new Map();S.f.forEach(r=>{const g=keyf(r);if(g==null||g==='')return;const o=m.get(g)||{c:0,s:0};o.c++;o.s+=S.m?(r[S.m]||0):0;m.set(g,o)});return m}
+const series=()=>S.d?grp(r=>r[S.d]?pk(r[S.d]):null):new Map();
+const val=o=>S.m?o.s:o.c, lbl=()=>S.m||'Quantidade';
+
+/* ---------- KPIs ---------- */
+function kpis(){
+  const f=S.f, v=S.m?f.map(r=>r[S.m]).filter(x=>x!=null):[], sum=v.reduce((a,b)=>a+b,0);
+  const st=S.cols.find(c=>c.t==='cat'&&/status/i.test(c.k)); let pc=null;
+  if(st){const t=f.filter(r=>r[st.k]!=null);pc=t.length?t.filter(r=>/conclu|finaliz|done|entregue/i.test(r[st.k])).length/t.length*100:null}
+  const ds=S.d?f.map(r=>r[S.d]).filter(Boolean).sort((a,b)=>a-b):[];
+  const it=[['Registros',fmt(f.length),`de ${fmt(S.rows.length)} no total`],
+    S.m&&['Total · '+S.m,fmt(sum),`${fmt(v.length)} valores`], S.m&&['Média',fmt(v.length?sum/v.length:0),'por registro'],
+    pc!=null&&['% Concluído',fmt(pc)+'%','coluna '+st.k],
+    S.c1&&[S.c1+' (distintos)',fmt(new Set(f.map(r=>r[S.c1]).filter(x=>x!=null)).size),''],
+    ds.length&&['Período',fd(ds[0])+' → '+fd(ds[ds.length-1]),'']].filter(Boolean).slice(0,6);
+  $('#kpis').innerHTML=it.map((x,i)=>`<div class="card !p-3 border-l-4" style="border-left-color:${P[i]}"><div class="text-xs text-slate-500 truncate">${esc(x[0])}</div><div class="${x[0]==='Período'?'text-sm mt-2':'text-2xl'} font-bold truncate">${esc(x[1])}</div><div class="text-xs text-slate-400 truncate">${esc(x[2])}</div></div>`).join('');
+}
+
+/* ---------- Gráficos ---------- */
+function ch(id,cfg){S.charts[id]?.destroy();S.charts[id]=new Chart($('#'+id),cfg)}
+const O=()=>({maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}});
+function charts(){
+  const dark=document.documentElement.classList.contains('dark');
+  Chart.defaults.color=dark?'#cbd5e1':'#475569'; Chart.defaults.borderColor=dark?'#1e293b':'#e2e8f0';
+  const ts=series(), ks=[...ts.keys()].sort();
+  $('#t_tr').textContent=`Tendência · ${lbl()} por ${S.g==='q'?'trimestre':'mês'}`;
+  ch('c_tr',{type:'line',data:{labels:ks.map(pl),datasets:[{label:lbl(),data:ks.map(k=>val(ts.get(k))),borderColor:P[0],backgroundColor:P[0]+'33',fill:true,tension:.35}]},options:O()});
+  const g1=[...grp(r=>S.c1?r[S.c1]:null).entries()].sort((a,b)=>val(b[1])-val(a[1])).slice(0,10);
+  $('#t_bar').textContent=`Top ${S.c1||'categorias'} · ${lbl()}`;
+  ch('c_bar',{type:'bar',data:{labels:g1.map(e=>e[0]),datasets:[{label:lbl(),data:g1.map(e=>val(e[1])),backgroundColor:P}]},options:{...O(),indexAxis:'y',scales:{x:{beginAtZero:true}}}});
+  const g2=[...grp(r=>S.c2?r[S.c2]:null).entries()].sort((a,b)=>b[1].c-a[1].c).slice(0,8);
+  $('#t_do').textContent='Distribuição · '+(S.c2||'—');
+  ch('c_do',{type:'doughnut',data:{labels:g2.map(e=>e[0]),datasets:[{data:g2.map(e=>e[1].c),backgroundColor:P,borderWidth:0}]},options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});
+  const tops=g2.slice(0,6).map(e=>e[0]), last=ks.slice(-8), mm={};
+  if(S.d&&S.c2)S.f.forEach(r=>{const d=r[S.d];if(!d||r[S.c2]==null)return;const k=pk(d)+'|'+r[S.c2],x=mm[k]=mm[k]||{c:0,s:0};x.c++;x.s+=S.m?(r[S.m]||0):0});
+  $('#t_st').textContent=`${lbl()} por período e ${S.c2||'categoria'}`;
+  ch('c_st',{type:'bar',data:{labels:last.map(pl),datasets:tops.map((t,i)=>({label:t,data:last.map(k=>mm[k+'|'+t]?val(mm[k+'|'+t]):0),backgroundColor:P[i]}))},options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}});
+}
+
+/* ---------- Comparativo e ranking ---------- */
+function delta(){
+  const ts=series(), ks=[...ts.keys()].sort(), now=pk(new Date()); let u=ks.filter(k=>k<=now); if(u.length<2)u=ks;
+  const [a,b]=u.slice(-2);
+  if(!b){$('#dl').innerHTML='<p class="text-sm text-slate-500 col-span-2">Dados insuficientes para comparar períodos (selecione uma coluna de data).</p>';return}
+  const A=ts.get(a), B=ts.get(b);
+  const row=(n,x,y)=>{const p=x?(y-x)/x*100:null;return `<div class="rounded-xl bg-slate-100 dark:bg-slate-800 p-3"><div class="text-xs text-slate-500">${esc(n)}</div><div class="text-xl font-bold">${fmt(y)}</div><div class="text-xs text-slate-500">${pl(a)}: ${fmt(x)} → ${pl(b)}</div><div class="font-semibold text-sm ${p==null?'':p>=0?'text-emerald-500':'text-rose-500'}">${p==null?'–':(p>=0?'▲ ':'▼ ')+fmt(Math.abs(p))+'%'}</div></div>`};
+  $('#dl').innerHTML=row('Quantidade',A.c,B.c)+(S.m?row(S.m,A.s,B.s):'');
+}
+function rank(){
+  const k=$('#rk').value, g=[...grp(r=>r[k]).entries()].sort((a,b)=>val(b[1])-val(a[1])).slice(0,10), mx=g.length?val(g[0][1]):1;
+  $('#rank').innerHTML=g.map((e,i)=>`<div><div class="flex justify-between text-sm"><span class="truncate pr-2">${i+1}. ${esc(e[0])}</span><b>${fmt(val(e[1]))}</b></div><div class="h-2 rounded bg-slate-200 dark:bg-slate-800"><div class="h-2 rounded" style="width:${mx?val(e[1])/mx*100:0}%;background:${P[i%10]}"></div></div></div>`).join('')||'<p class="text-sm text-slate-500">Sem dados.</p>';
+}
+
+/* ---------- Tabela ---------- */
+function tbl(){
+  const ks=S.cols.map(c=>c.k); let r=[...S.f];
+  if(S.sort.k){const k=S.sort.k,d=S.sort.d;r.sort((a,b)=>{const x=a[k],y=b[k];if(x==null)return 1;if(y==null)return -1;return(x>y?1:x<y?-1:0)*d})}
+  const pages=Math.max(1,Math.ceil(r.length/S.ps)); S.page=Math.min(S.page,pages);
+  const sl=r.slice((S.page-1)*S.ps,S.page*S.ps);
+  $('#th').innerHTML='<tr>'+ks.map(k=>`<th data-k="${esc(k)}" class="px-3 py-2 whitespace-nowrap cursor-pointer select-none">${esc(k)}${S.sort.k===k?(S.sort.d>0?' ▲':' ▼'):''}</th>`).join('')+'</tr>';
+  $('#tb').innerHTML=sl.map(x=>'<tr class="border-t border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">'+ks.map(k=>`<td class="px-3 py-2 max-w-[260px] truncate" title="${esc(cell(x[k]))}">${esc(cell(x[k]))}</td>`).join('')+'</tr>').join('')||'<tr><td class="p-6 text-center text-slate-500">Nenhum resultado</td></tr>';
+  $('#pg').innerHTML=`<span class="text-slate-500">${fmt(r.length)} registros · página ${S.page} de ${pages}</span><div class="flex gap-2"><button class="btn" data-p="-1" ${S.page<=1?'disabled':''}>← Anterior</button><button class="btn" data-p="1" ${S.page>=pages?'disabled':''}>Próxima →</button></div>`;
+}
+
+/* ---------- Eventos ---------- */
+$('#file').onchange=e=>readFile(e.target.files[0]);
+['dragover','drop'].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();if(ev==='drop')readFile(e.dataTransfer.files[0])}));
+$('#sheet').onchange=e=>loadSheet(e.target.value);
+const cfg=(id,key)=>$('#'+id).onchange=e=>{S[key]=e.target.value||null;if(id==='c1'&&S.c1)$('#rk').value=S.c1;render()};
+cfg('m','m');cfg('d','d');cfg('c1','c1');cfg('c2','c2');
+$('#g').onchange=e=>{S.g=e.target.value;render()};
+$('#rk').onchange=rank;
+$('#q').oninput=e=>{S.q=e.target.value;apply()};
+$('#df').onchange=e=>{S.from=e.target.value;apply()}; $('#dt').onchange=e=>{S.to=e.target.value;apply()};
+$('#mn').oninput=e=>{S.min=e.target.value;apply()};
+$('#fcat').onchange=e=>{if(e.target.classList.contains('fc')){S.filters[e.target.dataset.k]=e.target.value;apply()}};
+$('#clr').onclick=()=>{S.filters={};S.q=S.from=S.to=S.min='';['q','df','dt','mn'].forEach(i=>$('#'+i).value='');document.querySelectorAll('.fc').forEach(s=>s.value='');apply()};
+$('#ps').onchange=e=>{S.ps=+e.target.value;S.page=1;tbl()};
+$('#th').onclick=e=>{const k=e.target.closest('th')?.dataset.k;if(!k)return;S.sort=S.sort.k===k?{k,d:-S.sort.d}:{k,d:1};tbl()};
+$('#pg').onclick=e=>{const p=e.target.dataset.p;if(p){S.page+=+p;tbl()}};
+$('#bx').onclick=()=>{if(!S.f.length)return alert('Carregue um arquivo primeiro.');
+  const ws=XLSX.utils.json_to_sheet(S.f.map(r=>{const o={};S.cols.forEach(c=>o[c.k]=r[c.k]);return o}),{cellDates:true}), wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Dados filtrados'); XLSX.writeFile(wb,'dashboard_export.xlsx',{cellDates:true})};
+$('#bp').onclick=()=>window.print();
+let wasDark=false;
+window.addEventListener('beforeprint',()=>{wasDark=document.documentElement.classList.contains('dark');document.documentElement.classList.remove('dark');if(S.rows.length)charts()});
+window.addEventListener('afterprint',()=>{if(wasDark)document.documentElement.classList.add('dark');if(S.rows.length)charts()});
+function theme(d){document.documentElement.classList.toggle('dark',d);$('#dk').textContent=d?'☀️':'🌙';try{localStorage.setItem('dark',d?1:0)}catch(e){}if(S.rows.length)charts()}
+$('#dk').onclick=()=>theme(!document.documentElement.classList.contains('dark'));
+(()=>{let d=window.matchMedia('(prefers-color-scheme: dark)').matches;try{const s=localStorage.getItem('dark');if(s!==null)d=s==='1'}catch(e){}theme(d)})();
+</script>
+</body>
+</html>
